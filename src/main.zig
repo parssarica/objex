@@ -1,12 +1,15 @@
 const std = @import("std");
-const print = @import("utils.zig").print;
+const utils = @import("utils.zig");
+const print = utils.print;
 
-pub fn main() void {
+pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const alloc = arena.allocator();
-    _ = alloc;
 
-    print("Objex\n", .{});
+    const f = try utils.readfile(alloc, "ls");
+    defer alloc.free(f);
+
+    print("{s}", .{f});
 }
