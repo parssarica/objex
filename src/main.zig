@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+const parser = @import("parser.zig");
 const print = utils.print;
 
 pub fn main() !void {
@@ -11,5 +12,14 @@ pub fn main() !void {
     const f = try utils.readfile(alloc, "ls");
     defer alloc.free(f);
 
-    print("{s}", .{f});
+    _ = parser.parse_file(f) catch |err| {
+        switch (err) {
+            error.InvalidSize => parser.invalid_file("ELF size is too small."),
+            error.InvalidMagic => parser.invalid_file("File isn't ELF, invalid magic bytes"),
+            error.InvalidClass => parser.invalid_file("ELF class is invalid."),
+            error.InvalidEndianness => parser.invalid_file("ELF endianness is invalid."),
+            error.InvalidElfVersion => parser.invalid_file("ELF version is invalid."),
+            error.InvalidPadding => parser.invalid_file("ELF padding at header is invalid."),
+        }
+    };
 }
