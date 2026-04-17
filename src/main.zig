@@ -12,7 +12,7 @@ pub fn main() !void {
     const f = try utils.readfile(alloc, "ls");
     defer alloc.free(f);
 
-    _ = parser.parse_file(f) catch |err| {
+    _ = parser.parse_file(alloc, f) catch |err| {
         switch (err) {
             error.InvalidSize => parser.invalid_file("ELF size is too small."),
             error.InvalidMagic => parser.invalid_file("File isn't ELF, invalid magic bytes"),
@@ -20,6 +20,10 @@ pub fn main() !void {
             error.InvalidEndianness => parser.invalid_file("ELF endianness is invalid."),
             error.InvalidElfVersion => parser.invalid_file("ELF version is invalid."),
             error.InvalidPadding => parser.invalid_file("ELF padding at header is invalid."),
+            error.OutOfMemory => {
+                print("Out of memory\n", .{});
+                std.process.exit(1);
+            },
         }
     };
 }
