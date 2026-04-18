@@ -20,6 +20,7 @@ pub fn main() !void {
             error.InvalidEndianness => parser.invalid_file("ELF endianness is invalid."),
             error.InvalidElfVersion => parser.invalid_file("ELF version is invalid."),
             error.InvalidPadding => parser.invalid_file("ELF padding at header is invalid."),
+            error.NoEndSection => parser.invalid_file("Section name doesn't have an end.."),
             error.OutOfMemory => {
                 print("Out of memory\n", .{});
                 std.process.exit(1);
