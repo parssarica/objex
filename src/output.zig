@@ -27,11 +27,6 @@ pub fn help() void {
 }
 
 pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file) !void {
-    if (opts.show_help) {
-        help();
-        std.process.exit(0);
-    }
-
     if (!opts.show_sections and !opts.show_headers) {
         print("\x1b[31mERROR:\x1b[0m No options provided.", .{});
         std.process.exit(1);

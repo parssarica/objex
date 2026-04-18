@@ -23,6 +23,16 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
+    if (opts.show_help) {
+        output.help();
+        std.process.exit(0);
+    }
+
+    if (!opts.show_sections and !opts.show_headers) {
+        output.help();
+        std.process.exit(1);
+    }
+
     const path = if (opts.file) |path| path else {
         print("\x1b[31mERROR:\x1b[0m File isn't provided.\n", .{});
         std.process.exit(1);
