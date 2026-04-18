@@ -88,4 +88,21 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         print("\tSection header count: \t\t\t{d}\n", .{parsed.header.e_shnum});
         print("\tSection header string table index: \t{d}\n", .{parsed.header.e_shstrndx});
     }
+
+    if (opts.show_sections) {
+        for (parsed.section_header.items, 0..) |sect, i| {
+            print("Section {d}\n", .{i});
+            print("\tName: {s}\n", .{sect.name orelse "No name found."});
+            print("\tName offset: 0x{X}\n", .{sect.sh_name});
+            print("\tType: 0x{X}\n", .{sect.sh_type});
+            print("\tFlags: 0x{X}\n", .{sect.sh_flags});
+            print("\tVirtual addres: 0x{X}\n", .{sect.sh_addr});
+            print("\tOffset: 0x{X}\n", .{sect.sh_offset});
+            print("\tSize: 0x{X}\n", .{sect.sh_size});
+            print("\tLink: 0x{X}\n", .{sect.sh_link});
+            print("\tInfo: 0x{X}\n", .{sect.sh_info});
+            print("\tAddress align: 0x{X}\n", .{sect.sh_addralign});
+            print("\tEntry size: 0x{X}\n\n", .{sect.sh_entsize});
+        }
+    }
 }
