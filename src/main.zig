@@ -1,6 +1,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 const parser = @import("parser.zig");
+const cli = @import("cli.zig");
 const print = utils.print;
 
 pub fn main() !void {
@@ -8,6 +9,10 @@ pub fn main() !void {
     defer arena.deinit();
 
     const alloc = arena.allocator();
+
+    var args = std.process.args();
+    _ = args.next();
+    _ = try cli.parse_args(&args);
 
     const f = try utils.readfile(alloc, "ls");
     defer alloc.free(f);
