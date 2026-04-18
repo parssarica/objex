@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const parser = @import("parser.zig");
 const cli = @import("cli.zig");
+const output = @import("output.zig");
 const print = utils.print;
 
 pub fn main() !void {
@@ -12,12 +13,25 @@ pub fn main() !void {
 
     var args = std.process.args();
     _ = args.next();
-    _ = try cli.parse_args(&args);
+    const opts = cli.parse_args(&args) catch |err| {
+        print("\x1b[31mERROR:\x1b[0m {s}\n", .{switch (err) {
+            error.OptionUsedAsValue => "Option used as value.",
+            error.InvalidOption => "Invalid option used.",
+            error.UnspecifiedValue => "No value specified for last option.",
+        }});
+        output.help();
+        std.process.exit(1);
+    };
 
-    const f = try utils.readfile(alloc, "ls");
+    const path = if (opts.file) |path| path else {
+        print("\x1b[31mERROR:\x1b[0m File isn't provided.\n", .{});
+        std.process.exit(1);
+    };
+
+    const f = try utils.readfile(alloc, path);
     defer alloc.free(f);
 
-    _ = parser.parse_file(alloc, f) catch |err| {
+    const parsed = parser.parse_file(alloc, f) catch |err| {
         switch (err) {
             error.InvalidSize => parser.invalid_file("ELF size is too small."),
             error.InvalidMagic => parser.invalid_file("File isn't ELF, invalid magic bytes"),
@@ -25,11 +39,14 @@ pub fn main() !void {
             error.InvalidEndianness => parser.invalid_file("ELF endianness is invalid."),
             error.InvalidElfVersion => parser.invalid_file("ELF version is invalid."),
             error.InvalidPadding => parser.invalid_file("ELF padding at header is invalid."),
-            error.NoEndSection => parser.invalid_file("Section name doesn't have an end.."),
-            error.OutOfMemory => {
-                print("Out of memory\n", .{});
-                std.process.exit(1);
-            },
+            error.NoEndSection => parser.invalid_file("Section name doesn't have an end."),
+            error.OutOfMemory => print("Out of memory\n", .{}),
         }
+        std.process.exit(1);
+    };
+
+    output.print_parsed(alloc, &opts, &parsed) catch {
+        print("Out of memory\n", .{});
+        std.process.exit(1);
     };
 }

@@ -2,7 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 const print = utils.print;
 
-const options = struct {
+pub const options = struct {
     file: ?[]const u8,
     show_help: bool,
     show_sections: bool,
@@ -11,7 +11,7 @@ const options = struct {
 
 pub fn parse_args(args: *std.process.ArgIterator) !options {
     const opt_list = [_][]const u8{ "--help", "-f", "--file", "-s", "--sections", "-h", "--headers", "-a", "--all" };
-    var opts = options{ .file = undefined, .show_help = false, .show_sections = true, .show_headers = true };
+    var opts = options{ .file = null, .show_help = false, .show_sections = false, .show_headers = false };
     var next_val = false;
     while (args.next()) |arg| {
         if (next_val) {
