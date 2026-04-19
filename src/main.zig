@@ -37,7 +37,14 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
-    const f = try utils.readfile(alloc, path);
+    const f = utils.readfile(alloc, path) catch |err| {
+        if (err == error.IsDir) {
+            print("\x1b[31mERROR:\x1b[0m Path is a directory rather than a file.\n", .{});
+            std.process.exit(1);
+        }
+
+        return err;
+    };
     defer alloc.free(f);
 
     const parsed = parser.parse_file(alloc, f) catch |err| {
