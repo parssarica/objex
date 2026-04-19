@@ -10,14 +10,13 @@ pub fn help() void {
         \\
         \\Options:
         \\        --help     show this help message and exit
-        \\    -f, --file     specify file
         \\    -a, --all      show all informations about file
         \\    -s, --sections show sections
         \\    -h, --headers  show headers
         \\
         \\Example usage:
         \\
-        \\    objex -a -f /bin/ls
+        \\    objex -a /bin/ls
         \\
         \\    Shows all informations about /bin/ls
         \\

@@ -10,25 +10,18 @@ pub const options = struct {
 };
 
 pub fn parse_args(args: *std.process.ArgIterator) !options {
-    const opt_list = [_][]const u8{ "--help", "-f", "--file", "-s", "--sections", "-h", "--headers", "-a", "--all" };
+    const opt_list = [_][]const u8{ "--help", "-s", "--sections", "-h", "--headers", "-a", "--all" };
     var opts = options{ .file = null, .show_help = false, .show_sections = false, .show_headers = false };
-    var next_val = false;
+    var last_val: []const u8 = undefined;
+    var invalid_option_used = false;
     while (args.next()) |arg| {
-        if (next_val) {
-            for (opt_list) |item| {
-                if (std.meta.eql(item, arg)) {
-                    return error.OptionUsedAsValue;
-                }
-            }
-            opts.file = arg;
-            next_val = false;
-            continue;
+        last_val = arg;
+        if (invalid_option_used) {
+            return error.InvalidOption;
         }
 
         if (std.mem.eql(u8, arg, "--help")) {
             opts.show_help = true;
-        } else if (std.mem.eql(u8, arg, "-f") or std.mem.eql(u8, arg, "--file")) {
-            next_val = true;
         } else if (std.mem.eql(u8, arg, "-s") or std.mem.eql(u8, arg, "--sections")) {
             opts.show_sections = true;
         } else if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--headers")) {
@@ -37,13 +30,17 @@ pub fn parse_args(args: *std.process.ArgIterator) !options {
             opts.show_sections = true;
             opts.show_headers = true;
         } else {
-            return error.InvalidOption;
+            invalid_option_used = true;
         }
     }
 
-    if (next_val) {
-        return error.UnspecifiedValue;
+    for (opt_list) |opt| {
+        if (std.meta.eql(opt, last_val)) {
+            return error.OptionUsedAsFile;
+        }
     }
+
+    opts.file = last_val;
 
     return opts;
 }

@@ -15,9 +15,8 @@ pub fn main() !void {
     _ = args.next();
     const opts = cli.parse_args(&args) catch |err| {
         print("\x1b[31mERROR:\x1b[0m {s}\n", .{switch (err) {
-            error.OptionUsedAsValue => "Option used as value.",
+            error.OptionUsedAsFile => "Option used as file.",
             error.InvalidOption => "Invalid option used.",
-            error.UnspecifiedValue => "No value specified for last option.",
         }});
         output.help();
         std.process.exit(1);
