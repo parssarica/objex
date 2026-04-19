@@ -190,20 +190,30 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
     }
 
     if (opts.show_sections) {
+        print("Idx Sym Name                    Type        Addr       Offset   Size     Flags   \n", .{});
+        print("-----------------------------------------------------------------------------------\n", .{});
         for (parsed.section_header.items, 0..) |sect, i| {
-            print("Section {d}\n", .{i});
-            print("\tName: {s}\n", .{sect.name orelse "No name found."});
-            print("\tName offset: 0x{X}\n", .{sect.sh_name});
-            print("\tType: 0x{X}\n", .{sect.sh_type});
-            print("\tFlags: 0x{X}\n", .{sect.sh_flags});
-            print("\tVirtual addres: 0x{X}\n", .{sect.sh_addr});
-            print("\tOffset: 0x{X}\n", .{sect.sh_offset});
-            print("\tSize: 0x{X}\n", .{sect.sh_size});
-            print("\tLink: 0x{X}\n", .{sect.sh_link});
-            print("\tInfo: 0x{X}\n", .{sect.sh_info});
-            print("\tAddress align: 0x{X}\n", .{sect.sh_addralign});
-            print("\tEntry size: 0x{X}\n\n", .{sect.sh_entsize});
+            var flags = try decode_flags(allocator, sect.sh_flags);
+            defer flags.deinit(allocator);
+            print("\x1b[{d}m{d:>3}\x1b[0m {s}   \x1b[{d}m{s:<24}\x1b[{d}m0x{X:<10}\x1b[{d}m0x{X:<9}0x{X:<7}\x1b[{d}m{d:<9}\x1b[0m\x1b[{d}m{s:<6}\x1b[0m\n", .{ color_opts.dimwhite, i, blk: {
+                if (std.mem.eql(u8, sect.name orelse "<null>", ".text")) {
+                    break :blk "▶";
+                } else if (std.mem.eql(u8, sect.name orelse "<null>", ".data")) {
+                    break :blk "●";
+                } else if (std.mem.eql(u8, sect.name orelse "<null>", ".bss")) {
+                    break :blk "○";
+                }
+
+                break :blk " ";
+            }, color_opts.blue, sect.name orelse "<null>", color_opts.purple, sect.sh_type, color_opts.blue, sect.sh_addr, sect.sh_offset, color_opts.green, sect.sh_size, if (std.mem.eql(u8, flags.items, "-")) color_opts.dimwhite else color_opts.purple, flags.items });
         }
+
+        print("\nFlags:\n", .{});
+        print("  Core          : W (write), A (alloc), X (execute)\n", .{});
+        print("  Data / Layout : M (merge), S (strings), C (compressed)\n", .{});
+        print("  Linking       : I (info), L (link-order), G (group)\n", .{});
+        print("  Special       : T (TLS), E (exclude)\n", .{});
+        print("  OS / CPU      : O (OS-specific), x (OS mask), P (proc mask)\n", .{});
     }
 }
 
@@ -344,4 +354,70 @@ fn parse_flags_mips(allocator: std.mem.Allocator, flags: u64, color_opts: colors
     }
 
     return string;
+}
+
+fn decode_flags(allocator: std.mem.Allocator, flags: u64) !ArrayList(u8) {
+    var flag: ArrayList(u8) = .empty;
+
+    if (flags & 0x1 != 0) {
+        try flag.append(allocator, 'W');
+    }
+
+    if (flags & 0x2 != 0) {
+        try flag.append(allocator, 'A');
+    }
+
+    if (flags & 0x4 != 0) {
+        try flag.append(allocator, 'X');
+    }
+
+    if (flags & 0x10 != 0) {
+        try flag.append(allocator, 'M');
+    }
+
+    if (flags & 0x20 != 0) {
+        try flag.append(allocator, 'S');
+    }
+
+    if (flags & 0x40 != 0) {
+        try flag.append(allocator, 'I');
+    }
+
+    if (flags & 0x80 != 0) {
+        try flag.append(allocator, 'L');
+    }
+
+    if (flags & 0x100 != 0) {
+        try flag.append(allocator, 'O');
+    }
+
+    if (flags & 0x200 != 0) {
+        try flag.append(allocator, 'G');
+    }
+
+    if (flags & 0x400 != 0) {
+        try flag.append(allocator, 'T');
+    }
+
+    if (flags & 0x800 != 0) {
+        try flag.append(allocator, 'C');
+    }
+
+    if (flags & 0xff00000 != 0) {
+        try flag.append(allocator, 'x');
+    }
+
+    if (flags & 0x80000000 != 0) {
+        try flag.append(allocator, 'E');
+    }
+
+    if (flags & 0xf0000000 != 0) {
+        try flag.append(allocator, 'p');
+    }
+
+    if (std.mem.eql(u8, flag.items, "")) {
+        try flag.append(allocator, '-');
+    }
+
+    return flag;
 }
