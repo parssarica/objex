@@ -3,6 +3,27 @@ const utils = @import("utils.zig");
 const cli = @import("cli.zig");
 const parser = @import("parser.zig");
 const print = utils.print;
+const ArrayList = std.ArrayList;
+
+const colors = struct {
+    red: u8 = 31,
+    green: u8 = 32,
+    yellow: u8 = 33,
+    blue: u8 = 34,
+    purple: u8 = 35,
+    cyan: u8 = 36,
+    white: u8 = 37,
+    highlightedred: u8 = 41,
+    highlightedgreen: u8 = 42,
+    highlightedyellow: u8 = 43,
+    highlightedblue: u8 = 44,
+    highlightedpurple: u8 = 45,
+    highlightedcyan: u8 = 46,
+    highlightedwhite: u8 = 47,
+    bold: u8 = 1,
+    dimwhite: u8 = 2,
+    italic: u8 = 3,
+};
 
 pub fn help() void {
     const help_msg =
@@ -10,6 +31,7 @@ pub fn help() void {
         \\
         \\Options:
         \\        --help     show this help message and exit
+        \\        --no-color disables colors
         \\    -a, --all      show all informations about file
         \\    -s, --sections show sections
         \\    -h, --headers  show headers
@@ -25,15 +47,17 @@ pub fn help() void {
     print("{s}", .{help_msg});
 }
 
-pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file) !void {
+pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file, color_opts: colors) !void {
     if (!opts.show_sections and !opts.show_headers) {
         print("\x1b[31mERROR:\x1b[0m No options provided.", .{});
         std.process.exit(1);
     }
 
     if (opts.show_headers) {
-        var magic_str: std.ArrayList(u8) = .empty;
+        var magic_str: ArrayList(u8) = .empty;
+        var flags_resolved: ArrayList(u8) = try resolve_flags(allocator, parsed.header.e_flags, parsed.header.e_machine, color_opts);
         defer magic_str.deinit(allocator);
+        defer flags_resolved.deinit(allocator);
 
         for (parsed.e_ident_part.magic, 0..) |byte, i| {
             try magic_str.print(allocator, "{x:0>2}", .{byte});
@@ -41,12 +65,12 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
                 try magic_str.append(allocator, ' ');
             }
         }
-        print("Headers:\n", .{});
-        print("\tMagic bytes: \t\t\t\t{s}\n", .{magic_str.items});
-        print("\tClass: \t\t\t\t\t{X}, {s}\n", .{ parsed.e_ident_part.class, if (parsed.e_ident_part.class == 0x2) "64-bit" else "32-bit" });
-        print("\tEndianness: \t\t\t\t{X}, {s}\n", .{ parsed.e_ident_part.endianness, if (parsed.e_ident_part.endianness == 0x1) "little endian" else "big endian" });
-        print("\tELF version: \t\t\t\tv{d}\n", .{parsed.e_ident_part.elfver});
-        print("\tOS ABI: \t\t\t\t{X}, {s}\n", .{ parsed.e_ident_part.osabi, switch (parsed.e_ident_part.osabi) {
+        print("\x1b[{d}\x1b[{d}mHeaders:\x1b[0m\n", .{ color_opts.bold, color_opts.cyan });
+        print("\t\x1b[{d}mMagic bytes:\x1b[0m \t\t\t\t\x1b[{d}m{s}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, magic_str.items });
+        print("\t\x1b[{d}m\x1b[{d}mClass:\x1b[0m \t\t\t\t\t\x1b[{d}m{X}\x1b[0m, \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.green, parsed.e_ident_part.class, color_opts.white, if (parsed.e_ident_part.class == 0x2) "64-bit" else "32-bit" });
+        print("\t\x1b[{d}m\x1b[{d}mEndianness:\x1b[0m \t\t\t\t\x1b[{d}m{X}\x1b[0m, \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.green, parsed.e_ident_part.endianness, color_opts.white, if (parsed.e_ident_part.endianness == 0x1) "little endian" else "big endian" });
+        print("\t\x1b[{d}mELF version:\x1b[0m \t\t\t\t\x1b[{d}mv{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, parsed.e_ident_part.elfver });
+        print("\t\x1b[{d}mOS ABI:\x1b[0m \t\t\t\t\x1b[{d}m{X}\x1b[0m, \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, color_opts.white, parsed.e_ident_part.osabi, switch (parsed.e_ident_part.osabi) {
             0 => "System V",
             1 => "HP-UX",
             2 => "NetBSD",
@@ -67,8 +91,8 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             18 => "Stratus Technologies OpenVOS",
             else => "Other",
         } });
-        print("\tABI version: \t\t\t\tv{d}\n", .{parsed.e_ident_part.abiver});
-        print("\tType: \t\t\t\t\t{d}, {s}\n", .{ parsed.header.e_type, switch (parsed.header.e_type) {
+        print("\t\x1b[{d}mABI version:\x1b[0m \t\t\t\t\x1b[{d}mv{d}\x1b[0m\n\n", .{ color_opts.dimwhite, color_opts.green, parsed.e_ident_part.abiver });
+        print("\t\x1b[{d}m\x1b[{d}mType:\x1b[0m \t\t\t\t\t\x1b[{d}m{d}, \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.green, parsed.header.e_type, color_opts.white, switch (parsed.header.e_type) {
             0 => "None",
             1 => "Relocatable file",
             2 => "Executable file",
@@ -78,7 +102,7 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             0xff00...0xffff => "Processor specific",
             else => "Unkown",
         } });
-        print("\tMachine: \t\t\t\t{d}, {s}\n", .{ parsed.header.e_machine, switch (parsed.header.e_machine) {
+        print("\t\x1b[{d}m\x1b[{d}mMachine:\x1b[0m \t\t\t\t\x1b[{d}m{d}\x1b[0m, \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.green, parsed.header.e_machine, color_opts.white, switch (parsed.header.e_machine) {
             0 => "None",
             1 => "AT&T WE 32100",
             2 => "SPARC",
@@ -152,17 +176,17 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             0x102 => "LoongArch",
             else => "Unknown",
         } });
-        print("\tVersion: \t\t\t\t{d}\n", .{parsed.header.e_version});
-        print("\tEntry point: \t\t\t\t0x{X}\n", .{parsed.header.e_entry});
-        print("\tProgram headers offset: \t\t0x{X}\n", .{parsed.header.e_phoff});
-        print("\tSection headers offset: \t\t0x{X}\n", .{parsed.header.e_shoff});
-        print("\tFlags: \t\t\t\t\t0x{X}\n", .{parsed.header.e_flags});
-        print("\tELF header size: \t\t\t{d} bytes\n", .{parsed.header.e_ehsize});
-        print("\tProgram header entry size: \t\t{d} bytes\n", .{parsed.header.e_phentsize});
-        print("\tProgram header count: \t\t\t{d}\n", .{parsed.header.e_phnum});
-        print("\tSection header entry size: \t\t{d} bytes\n", .{parsed.header.e_shentsize});
-        print("\tSection header count: \t\t\t{d}\n", .{parsed.header.e_shnum});
-        print("\tSection header string table index: \t{d}\n", .{parsed.header.e_shstrndx});
+        print("\t\x1b[{d}mVersion:\x1b[0m \t\t\t\t\x1b[{d}m{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, parsed.header.e_version });
+        print("\t\x1b[{d}m\x1b[{d}mEntry point:\x1b[0m \t\t\t\t\x1b[{d}m0x{X}\x1b[0m\n\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.blue, parsed.header.e_entry });
+        print("\t\x1b[{d}m\x1b[{d}mProgram headers offset:\x1b[0m \t\t\x1b[{d}m0x{X}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.blue, parsed.header.e_phoff });
+        print("\t\x1b[{d}m\x1b[{d}mSection headers offset:\x1b[0m \t\t\x1b[{d}m0x{X}\x1b[0m\n", .{ color_opts.bold, color_opts.dimwhite, color_opts.blue, parsed.header.e_shoff });
+        print("\t\x1b[{d}mFlags:\x1b[0m \t\t\t\t\t0x{X}, {s}\n\n", .{ color_opts.dimwhite, parsed.header.e_flags, flags_resolved.items });
+        print("\t\x1b[{d}mELF header size:\x1b[0m \t\t\t\x1b[{d}m{d}\x1b[0m \x1b[{d}mbytes\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, parsed.header.e_ehsize, color_opts.dimwhite });
+        print("\t\x1b[{d}mProgram header entry size:\x1b[0m \t\t\x1b[{d}m{d}\x1b[0m \x1b[{d}mbytes\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, parsed.header.e_phentsize, color_opts.dimwhite });
+        print("\t\x1b[{d}mProgram header count:\x1b[0m \t\t\t\x1b[{d}m{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, parsed.header.e_phnum });
+        print("\t\x1b[{d}mSection header entry size:\x1b[0m \t\t\x1b[{d}m{d}\x1b[0m \x1b[{d}mbytes\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, parsed.header.e_shentsize, color_opts.dimwhite });
+        print("\t\x1b[{d}mSection header count:\x1b[0m \t\t\t\x1b[{d}m{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, parsed.header.e_shnum });
+        print("\t\x1b[{d}mSection header string table index:\x1b[0m \t\x1b[{d}m{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, parsed.header.e_shstrndx });
     }
 
     if (opts.show_sections) {
@@ -181,4 +205,143 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             print("\tEntry size: 0x{X}\n\n", .{sect.sh_entsize});
         }
     }
+}
+
+pub fn color_table(colors_on: bool) colors {
+    const c = if (colors_on) colors{} else colors{ .red = 0, .green = 0, .yellow = 0, .blue = 0, .purple = 0, .cyan = 0, .white = 0, .highlightedred = 0, .highlightedgreen = 0, .highlightedyellow = 0, .highlightedblue = 0, .highlightedpurple = 0, .highlightedcyan = 0, .highlightedwhite = 0, .bold = 0, .dimwhite = 0, .italic = 0 };
+
+    return c;
+}
+
+fn resolve_flags(allocator: std.mem.Allocator, flags: u64, machine: u16, color_opts: colors) !ArrayList(u8) {
+    return switch (machine) {
+        0x08 => parse_flags_mips(allocator, flags, color_opts),
+        0xb7 => parse_flags_arm(allocator, flags, color_opts),
+        0xf3 => parse_flags_riscv(allocator, flags, color_opts),
+        else => flags_unknown(allocator, machine, color_opts),
+    };
+}
+
+fn flags_unknown(allocator: std.mem.Allocator, machine: u16, color_opts: colors) !ArrayList(u8) {
+    var string: ArrayList(u8) = .empty;
+
+    if (machine == 3) {
+        try string.print(allocator, "\x1b[{d}mx86\x1b[0m", .{color_opts.purple});
+    } else if (machine == 0x3e) {
+        try string.print(allocator, "\x1b[{d}mx86_64\x1b[0m", .{color_opts.purple});
+    } else {
+        try string.print(allocator, "\x1b[{d}mUnknown\x1b[0m", .{color_opts.purple});
+    }
+
+    return string;
+}
+
+fn parse_flags_arm(allocator: std.mem.Allocator, flags: u64, color_opts: colors) !ArrayList(u8) {
+    var string: ArrayList(u8) = .empty;
+
+    const eabi_ver = (flags >> 24) & 0xff;
+    const flag_val = flags & 0xffffff;
+    const interworking = (flag_val & 4) != 0;
+    const pie = (flag_val & 0x20) != 0;
+    const newabi = (flag_val & 0x200) != 0;
+    const oldabi = (flag_val & 0x400) != 0;
+
+    try string.print(allocator, "\x1b[{d}mEABI version: {d}\x1b[0m", .{ color_opts.purple, eabi_ver });
+    if (interworking) {
+        try string.print(allocator, ", \x1b[{d}minterworking enabled\x1b[0m", .{color_opts.purple});
+    }
+
+    if (pie) {
+        try string.print(allocator, ", \x1b[{d}mPIE enabled\x1b[0m", .{color_opts.purple});
+    }
+
+    if (newabi) {
+        try string.print(allocator, ", \x1b[{d}mnew ABI enabled\x1b[0m", .{color_opts.purple});
+    }
+
+    if (oldabi) {
+        try string.print(allocator, ", \x1b[{d}mold ABI enabled\x1b[0m", .{color_opts.purple});
+    }
+
+    return string;
+}
+
+fn parse_flags_riscv(allocator: std.mem.Allocator, flags: u64, color_opts: colors) !ArrayList(u8) {
+    var string: ArrayList(u8) = .empty;
+
+    try string.print(allocator, "\x1b[{d}mFloat ABI: {s}\x1b[0m", .{ color_opts.purple, switch ((flags >> 1) & 0x3) {
+        0 => "soft",
+        1 => "single",
+        2 => "double",
+        3 => "quad",
+        else => "unknown",
+    } });
+    if ((flags & 0x1) != 0) {
+        try string.print(allocator, ", \x1b[{d}mRVC enabled\x1b[0m", .{color_opts.purple});
+    }
+
+    return string;
+}
+
+fn parse_flags_mips(allocator: std.mem.Allocator, flags: u64, color_opts: colors) !ArrayList(u8) {
+    const ase = flags & 0xf000000;
+    var string: ArrayList(u8) = .empty;
+
+    if ((flags & 0x1) != 0) {
+        try string.print(allocator, "\x1b[{d}mnoreorder\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x2) != 0) {
+        try string.print(allocator, ", \x1b[{d}mPIC\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x4) != 0) {
+        try string.print(allocator, ", \x1b[{d}mCPIC\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x8) != 0) {
+        try string.print(allocator, ", \x1b[{d}mXGOT\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x10) != 0) {
+        try string.print(allocator, ", \x1b[{d}mUCODE (obsolete)\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x20) != 0) {
+        try string.print(allocator, ", \x1b[{d}mABI2 (N32)\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x80) != 0) {
+        try string.print(allocator, ", \x1b[{d}mOPTIONS_FIRST\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x100) != 0) {
+        try string.print(allocator, ", \x1b[{d}m32-bit mode\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x200) != 0) {
+        try string.print(allocator, ", \x1b[{d}mFP64\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x400) != 0) {
+        try string.print(allocator, ", \x1b[{d}mNan2008\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((flags & 0x40) != 0) {
+        try string.print(allocator, ", \x1b[{d}mdynamic\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((ase & 0x8000000) != 0) {
+        try string.print(allocator, ", \x1b[{d}mASE: MDMX\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((ase & 0x4000000) != 0) {
+        try string.print(allocator, ", \x1b[{d}mASE: MIPS16\x1b[0m", .{color_opts.purple});
+    }
+
+    if ((ase & 0x2000000) != 0) {
+        try string.print(allocator, ", \x1b[{d}mASE: MicroMIPS\x1b[0m", .{color_opts.purple});
+    }
+
+    return string;
 }

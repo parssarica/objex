@@ -61,7 +61,7 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
-    output.print_parsed(alloc, &opts, &parsed) catch {
+    output.print_parsed(alloc, &opts, &parsed, output.color_table(opts.colors_on)) catch {
         print("Out of memory\n", .{});
         std.process.exit(1);
     };
