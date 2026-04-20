@@ -9,10 +9,15 @@ const colors = struct {
     red: u8 = 31,
     green: u8 = 32,
     yellow: u8 = 33,
+    brightyellow: u8 = 93,
     blue: u8 = 34,
+    brightblue: u8 = 94,
     purple: u8 = 35,
+    brightpurple: u8 = 95,
     cyan: u8 = 36,
+    brightcyan: u8 = 96,
     white: u8 = 37,
+    brightblack: u8 = 90,
     highlightedred: u8 = 41,
     highlightedgreen: u8 = 42,
     highlightedyellow: u8 = 43,
@@ -244,17 +249,17 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             }, color_opts.blue, sect.sh_addr, sect.sh_offset, color_opts.green, sect.sh_size, if (std.mem.eql(u8, flags.items, "-")) color_opts.dimwhite else color_opts.purple, flags.items });
         }
 
-        print("\nFlags:\n", .{});
-        print("  Core          : W (write), A (alloc), X (execute)\n", .{});
-        print("  Data / Layout : M (merge), S (strings), C (compressed)\n", .{});
-        print("  Linking       : I (info), L (link-order), G (group)\n", .{});
-        print("  Special       : T (TLS), E (exclude)\n", .{});
-        print("  OS / CPU      : O (OS-specific), x (OS mask), P (proc mask)\n", .{});
+        print("\n\x1b[{d}mFlags:\x1b[0m\n", .{color_opts.cyan});
+        print("  \x1b[{d}mCore\x1b[0m          : \x1b[{d}mW\x1b[0m \x1b[{d}m(write)\x1b[0m       \x1b[{d}mA\x1b[0m \x1b[{d}m(alloc)\x1b[0m      \x1b[{d}m\x1b[{d}mX\x1b[0m \x1b[{d}m(execute)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.green, color_opts.dimwhite, color_opts.blue, color_opts.dimwhite, color_opts.bold, color_opts.yellow, color_opts.dimwhite });
+        print("  \x1b[{d}mData / Layout\x1b[0m : \x1b[{d}mM\x1b[0m \x1b[{d}m(merge)\x1b[0m       \x1b[{d}mS\x1b[0m \x1b[{d}m(strings)\x1b[0m    \x1b[{d}mC\x1b[0m \x1b[{d}m(compressed)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.purple, color_opts.dimwhite, color_opts.cyan, color_opts.dimwhite, color_opts.brightpurple, color_opts.dimwhite });
+        print("  \x1b[{d}mLinking\x1b[0m       : \x1b[{d}mI\x1b[0m \x1b[{d}m(info)\x1b[0m        \x1b[{d}mL\x1b[0m \x1b[{d}m(link-order)\x1b[0m \x1b[{d}mG\x1b[0m \x1b[{d}m(group)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.brightblue, color_opts.dimwhite, color_opts.brightyellow, color_opts.dimwhite, color_opts.brightcyan, color_opts.dimwhite });
+        print("  \x1b[{d}mSpecial\x1b[0m       : \x1b[{d}mT\x1b[0m \x1b[{d}m(TLS)\x1b[0m         \x1b[{d}mE\x1b[0m \x1b[{d}m(exclude)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.red, color_opts.dimwhite, color_opts.brightblack, color_opts.dimwhite });
+        print("  \x1b[{d}mOS / CPU\x1b[0m      : \x1b[{d}m\x1b[{d}mO\x1b[0m \x1b[{d}m(OS-specific)\x1b[0m \x1b[{d}mx\x1b[0m \x1b[{d}m(OS mask)\x1b[0m    \x1b[{d}mP\x1b[0m \x1b[{d}m(proc mask)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.dimwhite, color_opts.yellow, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite });
     }
 }
 
 pub fn color_table(colors_on: bool) colors {
-    const c = if (colors_on) colors{} else colors{ .red = 0, .green = 0, .yellow = 0, .blue = 0, .purple = 0, .cyan = 0, .white = 0, .highlightedred = 0, .highlightedgreen = 0, .highlightedyellow = 0, .highlightedblue = 0, .highlightedpurple = 0, .highlightedcyan = 0, .highlightedwhite = 0, .bold = 0, .dimwhite = 0, .italic = 0 };
+    const c = if (colors_on) colors{} else colors{ .red = 0, .green = 0, .yellow = 0, .brightyellow = 0, .blue = 0, .brightblue = 0, .purple = 0, .brightpurple = 0, .cyan = 0, .brightcyan = 0, .white = 0, .brightblack = 0, .highlightedred = 0, .highlightedgreen = 0, .highlightedyellow = 0, .highlightedblue = 0, .highlightedpurple = 0, .highlightedcyan = 0, .highlightedwhite = 0, .bold = 0, .dimwhite = 0, .italic = 0 };
 
     return c;
 }
