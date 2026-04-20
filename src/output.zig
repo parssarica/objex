@@ -190,12 +190,15 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
     }
 
     if (opts.show_sections) {
-        print("Idx Sym Name                    Type        Addr       Offset   Size     Flags   \n", .{});
-        print("-----------------------------------------------------------------------------------\n", .{});
+        if (opts.show_headers) {
+            print("\n", .{});
+        }
+        print("Idx Sym Name                    Type           Addr       Offset   Size     Flags   \n", .{});
+        print("----------------------------------------------------------------------------------------\n", .{});
         for (parsed.section_header.items, 0..) |sect, i| {
             var flags = try decode_flags(allocator, sect.sh_flags);
             defer flags.deinit(allocator);
-            print("\x1b[{d}m{d:>3}\x1b[0m {s}   \x1b[{d}m{s:<24}\x1b[{d}m0x{X:<10}\x1b[{d}m0x{X:<9}0x{X:<7}\x1b[{d}m{d:<9}\x1b[0m\x1b[{d}m{s:<6}\x1b[0m\n", .{ color_opts.dimwhite, i, blk: {
+            print("\x1b[{d}m{d:>3}\x1b[0m {s}   \x1b[{d}m{s:<24}\x1b[{d}m{s:<15}\x1b[{d}m0x{X:<9}0x{X:<7}\x1b[{d}m{d:<9}\x1b[0m\x1b[{d}m{s:<6}\x1b[0m\n", .{ color_opts.dimwhite, i, blk: {
                 if (std.mem.eql(u8, sect.name orelse "<null>", ".text")) {
                     break :blk "▶";
                 } else if (std.mem.eql(u8, sect.name orelse "<null>", ".data")) {
@@ -205,7 +208,40 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
                 }
 
                 break :blk " ";
-            }, color_opts.blue, sect.name orelse "<null>", color_opts.purple, sect.sh_type, color_opts.blue, sect.sh_addr, sect.sh_offset, color_opts.green, sect.sh_size, if (std.mem.eql(u8, flags.items, "-")) color_opts.dimwhite else color_opts.purple, flags.items });
+            }, color_opts.blue, sect.name orelse "<null>", color_opts.purple, switch (sect.sh_type) {
+                0 => "NULL",
+                1 => "PROGBITS",
+                2 => "SYMTAB",
+                3 => "STRTAB",
+                4 => "RELA",
+                5 => "HASH",
+                6 => "DYNAMIC",
+                7 => "NOTE",
+                8 => "NOBITS",
+                9 => "REL",
+                10 => "SHLIB",
+                11 => "DYNSYM",
+                14 => "INIT_ARRAY",
+                15 => "FINI_ARRAY",
+                16 => "PREINIT_ARRAY",
+                17 => "GROUP",
+                18 => "SYMTAB_SHNDX",
+                19 => "RELR",
+                20 => "NUM",
+                0x6ffffff5 => "GNU_ATTRIBUTES",
+                0x6ffffff6 => "GNU_HASH",
+                0x6ffffff7 => "GNU_LIBLIST",
+                0x6ffffff8 => "CHECKSUM",
+                0x6ffffffa => "SUNW_MOVE",
+                0x6ffffffb => "SUNW_COMDAT",
+                0x6ffffffc => "SUNW_SYMINFO",
+                0x6ffffffd => "VERDEF",
+                0x6ffffffe => "VERNEED",
+                0x6fffffff => "VERSYM",
+                0x70000000...0x7fffffff => "Proc specific",
+                0x80000000...0x8fffffff => "User specific",
+                else => "Unknown",
+            }, color_opts.blue, sect.sh_addr, sect.sh_offset, color_opts.green, sect.sh_size, if (std.mem.eql(u8, flags.items, "-")) color_opts.dimwhite else color_opts.purple, flags.items });
         }
 
         print("\nFlags:\n", .{});
