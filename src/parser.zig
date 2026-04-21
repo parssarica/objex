@@ -44,11 +44,26 @@ pub const elf_section = struct {
     sh_entsize: u64,
 };
 
+pub const elf_sym = struct {
+    name: ?[]const u8,
+    st_name: u32,
+    st_info: u8,
+    st_other: u8,
+    st_shndx: u16,
+    st_value: u64,
+    st_size: u64,
+};
+
 pub const elf_file = struct {
     e_ident_part: e_ident,
     header: elf_header,
     section_header: ArrayList(elf_section),
+    symbols: ArrayList(elf_sym),
 };
+
+fn little8(bytes: []const u8) u8 {
+    return std.mem.readInt(u8, bytes[0..1], .little);
+}
 
 fn little16(bytes: []const u8) u16 {
     return std.mem.readInt(u16, bytes[0..2], .little);
@@ -60,6 +75,10 @@ fn little32(bytes: []const u8) u32 {
 
 fn little64(bytes: []const u8) u64 {
     return std.mem.readInt(u64, bytes[0..8], .little);
+}
+
+fn big8(bytes: []const u8) u8 {
+    return std.mem.readInt(u8, bytes[0..1], .big);
 }
 
 fn big16(bytes: []const u8) u16 {
@@ -271,12 +290,88 @@ pub fn parse_section_header(allocator: std.mem.Allocator, file: []const u8, iden
     return list;
 }
 
+pub fn parse_symbols(allocator: std.mem.Allocator, file: []const u8, sections: []const elf_section, ident: e_ident) !ArrayList(elf_sym) {
+    var list: ArrayList(elf_sym) = .empty;
+    var strtab_off: ?u64 = null;
+    var dynstr_off: ?u64 = null;
+
+    for (sections) |sect| {
+        if (std.mem.eql(u8, sect.name orelse continue, ".strtab")) {
+            strtab_off = sect.sh_offset;
+        } else if (std.mem.eql(u8, sect.name orelse continue, ".dynstr")) {
+            dynstr_off = sect.sh_offset;
+        }
+    }
+
+    for (sections) |sect| {
+        if (std.mem.eql(u8, sect.name orelse continue, ".symtab") or std.mem.eql(u8, sect.name orelse continue, ".dynsym")) {
+            var addr = sect.sh_offset;
+            var symsize: u8 = undefined;
+            while (addr < sect.sh_offset + sect.sh_size) : (addr += symsize) {
+                var st_name: u32 = undefined;
+                var st_info: u8 = undefined;
+                var st_other: u8 = undefined;
+                var st_shndx: u16 = undefined;
+                var st_value: u64 = undefined;
+                var st_size: u64 = undefined;
+                var name: ?[]const u8 = null;
+                if (ident.class == 0x2) {
+                    symsize = 24;
+                    if (addr + symsize > file.len) {
+                        return error.InvalidSize;
+                    }
+                    st_name = if (ident.endianness == 0x1) little32(file[addr .. addr + 4]) else big32(file[addr .. addr + 4]);
+                    st_info = if (ident.endianness == 0x1) little8(file[addr + 4 .. addr + 5]) else big8(file[addr + 4 .. addr + 5]);
+                    st_other = if (ident.endianness == 0x1) little8(file[addr + 5 .. addr + 6]) else big8(file[addr + 5 .. addr + 6]);
+                    st_shndx = if (ident.endianness == 0x1) little16(file[addr + 6 .. addr + 8]) else big16(file[addr + 6 .. addr + 10]);
+                    st_value = if (ident.endianness == 0x1) little64(file[addr + 8 .. addr + 16]) else big64(file[addr + 8 .. addr + 16]);
+                    st_size = if (ident.endianness == 0x1) little64(file[addr + 16 .. addr + 24]) else big64(file[addr + 16 .. addr + 24]);
+                } else {
+                    symsize = 16;
+                    if (addr + symsize > file.len) {
+                        return error.InvalidSize;
+                    }
+                    st_name = if (ident.endianness == 0x1) little32(file[addr .. addr + 4]) else big32(file[addr .. addr + 4]);
+                    st_value = if (ident.endianness == 0x1) little32(file[addr + 4 .. addr + 8]) else big32(file[addr + 4 .. addr + 8]);
+                    st_size = if (ident.endianness == 0x1) little32(file[addr + 8 .. addr + 12]) else big32(file[addr + 8 .. addr + 12]);
+                    st_info = if (ident.endianness == 0x1) little8(file[addr + 12 .. addr + 13]) else big8(file[addr + 12 .. addr + 13]);
+                    st_other = if (ident.endianness == 0x1) little8(file[addr + 13 .. addr + 14]) else big8(file[addr + 13 .. addr + 14]);
+                    st_shndx = if (ident.endianness == 0x1) little16(file[addr + 14 .. addr + 16]) else big16(file[addr + 14 .. addr + 16]);
+                }
+
+                if (st_name != 0) {
+                    if (std.mem.eql(u8, sect.name orelse continue, ".symtab")) {
+                        const offset = (strtab_off orelse return error.NoStrtabSection);
+                        name = file[offset + st_name .. offset + st_name + (std.mem.indexOfScalar(u8, file[offset + st_name ..], 0) orelse return error.NoEndSymbol)];
+                    } else {
+                        const offset = (dynstr_off orelse return error.NoDynstrSection);
+                        name = file[offset + st_name .. offset + st_name + (std.mem.indexOfScalar(u8, file[offset + st_name ..], 0) orelse return error.NoEndSymbol)];
+                    }
+                }
+
+                try list.append(allocator, elf_sym{
+                    .name = name,
+                    .st_name = st_name,
+                    .st_info = st_info,
+                    .st_other = st_other,
+                    .st_shndx = st_shndx,
+                    .st_value = st_value,
+                    .st_size = st_size,
+                });
+            }
+        }
+    }
+
+    return list;
+}
+
 pub fn parse_file(allocator: std.mem.Allocator, file: []const u8) !elf_file {
     const e_ident_part = try parse_e_ident(file);
     const header = try parse_header(file, e_ident_part.class, e_ident_part.endianness);
     const section_header = try parse_section_header(allocator, file, e_ident_part, header);
+    const symbols = try parse_symbols(allocator, file, section_header.items, e_ident_part);
 
-    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header };
+    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .symbols = symbols };
 }
 
 test "parse_e_ident_test1" {
@@ -390,5 +485,97 @@ test "parse_section_test1" {
     try std.testing.expectEqualDeep(
         output.items[0],
         elf_section{ .name = ".abc", .data = bytes[0x318..0x33c], .sh_name = 0xb, .sh_type = 0x7, .sh_flags = 0x2, .sh_addr = 0x318, .sh_offset = 0x318, .sh_size = 0x24, .sh_link = 0x0, .sh_info = 0x0, .sh_addralign = 0x4, .sh_entsize = 0x0 },
+    );
+}
+
+test "parse_symbols_test1" {
+    const bytes = [_]u8{ 0x04, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    var output = try parse_symbols(std.testing.allocator, &bytes, &[_]elf_section{ elf_section{
+        .name = ".dynsym",
+        .data = bytes[0..],
+        .sh_name = 0,
+        .sh_type = 0,
+        .sh_flags = 0,
+        .sh_addr = 0,
+        .sh_offset = 0,
+        .sh_size = bytes.len,
+        .sh_link = 0,
+        .sh_info = 0,
+        .sh_addralign = 0,
+        .sh_entsize = 0,
+    }, elf_section{
+        .name = ".dynstr",
+        .data = bytes[0..],
+        .sh_name = 0,
+        .sh_type = 0,
+        .sh_flags = 0,
+        .sh_addr = 0,
+        .sh_offset = 0,
+        .sh_size = bytes.len,
+        .sh_link = 0,
+        .sh_info = 0,
+        .sh_addralign = 0,
+        .sh_entsize = 0,
+    } }, e_ident{
+        .magic = &[_]u8{},
+        .class = 2,
+        .endianness = 1,
+        .elfver = 0,
+        .osabi = 0,
+        .abiver = 0,
+        .padding = &[_]u8{},
+    });
+
+    defer output.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualDeep(
+        output.items[0],
+        elf_sym{ .name = bytes[4..5], .st_name = 0x04, .st_info = 0x12, .st_other = 0x00, .st_shndx = 0x00, .st_value = 0x00, .st_size = 0x00 },
+    );
+}
+
+test "parse_symbols_test2" {
+    const bytes = [_]u8{ 0x04, 0x00, 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    var output = try parse_symbols(std.testing.allocator, &bytes, &[_]elf_section{ elf_section{
+        .name = ".dynsym",
+        .data = bytes[0..],
+        .sh_name = 0,
+        .sh_type = 0,
+        .sh_flags = 0,
+        .sh_addr = 0,
+        .sh_offset = 0,
+        .sh_size = bytes.len,
+        .sh_link = 0,
+        .sh_info = 0,
+        .sh_addralign = 0,
+        .sh_entsize = 0,
+    }, elf_section{
+        .name = ".dynstr",
+        .data = bytes[0..],
+        .sh_name = 0,
+        .sh_type = 0,
+        .sh_flags = 0,
+        .sh_addr = 0,
+        .sh_offset = 0,
+        .sh_size = bytes.len,
+        .sh_link = 0,
+        .sh_info = 0,
+        .sh_addralign = 0,
+        .sh_entsize = 0,
+    } }, e_ident{
+        .magic = &[_]u8{},
+        .class = 1,
+        .endianness = 1,
+        .elfver = 0,
+        .osabi = 0,
+        .abiver = 0,
+        .padding = &[_]u8{},
+    });
+
+    defer output.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualDeep(
+        output.items[0],
+        elf_sym{ .name = bytes[4..5], .st_name = 0x04, .st_info = 0x0, .st_other = 0x00, .st_shndx = 0x00, .st_value = 0x12, .st_size = 0x00 },
     );
 }
