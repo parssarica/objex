@@ -38,7 +38,8 @@ pub fn help() void {
         \\        --help     show this help message and exit
         \\        --no-color disables colors
         \\    -a, --all      show all informations about file
-        \\    -s, --sections show sections
+        \\    -S, --sections show sections
+        \\    -s, --symbols  show symbols
         \\    -h, --headers  show headers
         \\
         \\Example usage:
@@ -53,8 +54,8 @@ pub fn help() void {
 }
 
 pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file, color_opts: colors) !void {
-    if (!opts.show_sections and !opts.show_headers) {
-        print("\x1b[31mERROR:\x1b[0m No options provided.", .{});
+    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols) {
+        print("\x1b[31mERROR:\x1b[0m No options provided.\n", .{});
         std.process.exit(1);
     }
 
@@ -255,6 +256,68 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         print("  \x1b[{d}mLinking\x1b[0m       : \x1b[{d}mI\x1b[0m \x1b[{d}m(info)\x1b[0m        \x1b[{d}mL\x1b[0m \x1b[{d}m(link-order)\x1b[0m \x1b[{d}mG\x1b[0m \x1b[{d}m(group)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.brightblue, color_opts.dimwhite, color_opts.brightyellow, color_opts.dimwhite, color_opts.brightcyan, color_opts.dimwhite });
         print("  \x1b[{d}mSpecial\x1b[0m       : \x1b[{d}mT\x1b[0m \x1b[{d}m(TLS)\x1b[0m         \x1b[{d}mE\x1b[0m \x1b[{d}m(exclude)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.red, color_opts.dimwhite, color_opts.brightblack, color_opts.dimwhite });
         print("  \x1b[{d}mOS / CPU\x1b[0m      : \x1b[{d}m\x1b[{d}mO\x1b[0m \x1b[{d}m(OS-specific)\x1b[0m \x1b[{d}mx\x1b[0m \x1b[{d}m(OS mask)\x1b[0m    \x1b[{d}mP\x1b[0m \x1b[{d}m(proc mask)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.dimwhite, color_opts.yellow, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite });
+    }
+
+    if (opts.show_symbols) {
+        if (opts.show_sections) {
+            print("\n", .{});
+        }
+        print("Idx Sym Value               Size  Type    Bind    Vis     Section         Name\n", .{});
+        print("--------------------------------------------------------------------------------\n", .{});
+        for (parsed.symbols.items, 0..) |sym, i| {
+            const cond = std.mem.eql(u8, sym.name orelse "", "main") or std.mem.eql(u8, sym.name orelse "", "_start");
+            print("\x1b[{d}m{d:<4} {s}  \x1b[0m\x1b[{d}m0x{X:0>16}  {d:<6}\x1b[{d}m{s:<8}\x1b[0m\x1b[{d}m{s:<8}\x1b[0m\x1b[{d}m{s:<8}\x1b[0m\x1b[{d}m{s:<15}\x1b[{d}m\x1b[{d}m{s:<6}\x1b[0m\n", .{ color_opts.dimwhite, i, switch (sym.st_info & 0xf) {
+                1 => "●",
+                2 => "ƒ",
+                3 => "§",
+                4 => "F",
+                5 => "T",
+                6 => "🧵",
+                else => switch (sym.st_shndx) {
+                    0xfff1 => "=",
+                    0xfff2 => "C",
+                    else => "?",
+                },
+            }, color_opts.blue, sym.st_value, sym.st_size, color_opts.cyan, switch (sym.st_info & 0xf) {
+                0 => "NOTYPE",
+                1 => "OBJECT",
+                2 => "FUNC",
+                3 => "SECTION",
+                4 => "FILE",
+                5 => "COMMON",
+                6 => "TLS",
+                else => "Unknown",
+            }, color_opts.yellow, switch (sym.st_info >> 4) {
+                0 => "LOCAL",
+                1 => "GLOBAL",
+                2 => "WEAK",
+                else => "Unknown",
+            }, switch (sym.st_other & 3) {
+                0 => color_opts.dimwhite,
+                1 => color_opts.red,
+                2 => color_opts.purple,
+                3 => color_opts.brightblack,
+                else => unreachable,
+            }, switch (sym.st_other & 3) {
+                0 => "DEFAULT",
+                1 => "INTERNAL",
+                2 => "HIDDEN",
+                3 => "PROTECTED",
+                else => unreachable,
+            }, if (sym.st_shndx == 0) color_opts.red else color_opts.purple, blk: {
+                if (sym.st_shndx == 0xfff1) {
+                    break :blk "ABS";
+                } else if (sym.st_shndx == 0xfff2) {
+                    break :blk "COMMON";
+                } else if (sym.st_shndx == 0) {
+                    break :blk "UND";
+                } else if (sym.st_shndx >= parsed.section_header.items.len) {
+                    break :blk "Invalid section";
+                } else {
+                    break :blk (parsed.section_header.items[sym.st_shndx].name orelse "");
+                }
+            }, if (cond) color_opts.bold else 0, if (cond) color_opts.green else color_opts.white, sym.name orelse "" });
+        }
     }
 }
 
