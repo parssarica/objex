@@ -1,3 +1,6 @@
+// Pars SARICA <pars@parssarica.com>
+//
+
 const std = @import("std");
 const utils = @import("utils.zig");
 const parser = @import("parser.zig");
