@@ -59,10 +59,22 @@ pub const elf_str = struct {
     s: []const u8,
 };
 
+pub const elf_segment = struct {
+    p_type: u32,
+    p_flags: u32,
+    p_offset: u64,
+    p_vaddr: u64,
+    p_paddr: u64,
+    p_filesz: u64,
+    p_memsz: u64,
+    p_align: u64,
+};
+
 pub const elf_file = struct {
     e_ident_part: e_ident,
     header: elf_header,
     section_header: ArrayList(elf_section),
+    program_header: ArrayList(elf_segment),
     symbols: ArrayList(elf_sym),
     strings: ArrayList(elf_str),
 };
@@ -390,14 +402,62 @@ pub fn parse_strings(allocator: std.mem.Allocator, sections: []const elf_section
     return list;
 }
 
+pub fn parse_program_header(allocator: std.mem.Allocator, file: []const u8, ident: e_ident, header: elf_header) !ArrayList(elf_segment) {
+    var segments: ArrayList(elf_segment) = .empty;
+    var i: u16 = 0;
+
+    while (i < header.e_phnum) : (i += 1) {
+        const addr = header.e_phoff + i * header.e_phentsize;
+        const p_type = if (ident.endianness == 0x1) little32(file[addr .. addr + 4]) else big32(file[addr .. addr + 4]);
+        var p_flags: u32 = undefined;
+        var p_offset: u32 = undefined;
+        var p_vaddr: u64 = undefined;
+        var p_paddr: u64 = undefined;
+        var p_filesz: u64 = undefined;
+        var p_memsz: u64 = undefined;
+        var p_align: u64 = undefined;
+        if (ident.class == 0x2) {
+            p_flags = if (ident.endianness == 0x1) little32(file[addr + 4 .. addr + 8]) else big32(file[addr + 4 .. addr + 8]);
+            p_offset = if (ident.endianness == 0x1) little32(file[addr + 8 .. addr + 16]) else big32(file[addr + 8 .. addr + 16]);
+            p_vaddr = if (ident.endianness == 0x1) little32(file[addr + 16 .. addr + 24]) else big32(file[addr + 16 .. addr + 24]);
+            p_paddr = if (ident.endianness == 0x1) little32(file[addr + 24 .. addr + 32]) else big32(file[addr + 24 .. addr + 32]);
+            p_filesz = if (ident.endianness == 0x1) little32(file[addr + 32 .. addr + 40]) else big32(file[addr + 32 .. addr + 40]);
+            p_memsz = if (ident.endianness == 0x1) little32(file[addr + 40 .. addr + 48]) else big32(file[addr + 40 .. addr + 48]);
+            p_align = if (ident.endianness == 0x1) little32(file[addr + 48 .. addr + 56]) else big32(file[addr + 48 .. addr + 56]);
+        } else {
+            p_offset = if (ident.endianness == 0x1) little32(file[addr + 4 .. addr + 8]) else big32(file[addr + 4 .. addr + 8]);
+            p_vaddr = if (ident.endianness == 0x1) little32(file[addr + 8 .. addr + 12]) else big32(file[addr + 8 .. addr + 12]);
+            p_paddr = if (ident.endianness == 0x1) little32(file[addr + 12 .. addr + 16]) else big32(file[addr + 12 .. addr + 16]);
+            p_filesz = if (ident.endianness == 0x1) little32(file[addr + 16 .. addr + 20]) else big32(file[addr + 16 .. addr + 20]);
+            p_memsz = if (ident.endianness == 0x1) little32(file[addr + 20 .. addr + 24]) else big32(file[addr + 20 .. addr + 24]);
+            p_flags = if (ident.endianness == 0x1) little32(file[addr + 24 .. addr + 28]) else big32(file[addr + 24 .. addr + 28]);
+            p_align = if (ident.endianness == 0x1) little32(file[addr + 28 .. addr + 32]) else big32(file[addr + 28 .. addr + 32]);
+        }
+
+        try segments.append(allocator, elf_segment{
+            .p_type = p_type,
+            .p_flags = p_flags,
+            .p_offset = p_offset,
+            .p_vaddr = p_vaddr,
+            .p_paddr = p_paddr,
+            .p_filesz = p_filesz,
+            .p_memsz = p_memsz,
+            .p_align = p_align,
+        });
+    }
+
+    return segments;
+}
+
 pub fn parse_file(allocator: std.mem.Allocator, file: []const u8) !elf_file {
     const e_ident_part = try parse_e_ident(file);
     const header = try parse_header(file, e_ident_part.class, e_ident_part.endianness);
     const section_header = try parse_section_header(allocator, file, e_ident_part, header);
+    const program_header = try parse_program_header(allocator, file, e_ident_part, header);
     const symbols = try parse_symbols(allocator, file, section_header.items, e_ident_part);
     const strings = try parse_strings(allocator, section_header.items);
 
-    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .symbols = symbols, .strings = strings };
+    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .program_header = program_header, .symbols = symbols, .strings = strings };
 }
 
 test "parse_e_ident_test1" {
@@ -634,4 +694,36 @@ test "parse_strings_test1" {
     try std.testing.expectEqual(0, strings.items[0].addr);
     try std.testing.expectEqualStrings("cats", strings.items[1].s);
     try std.testing.expectEqual(6, strings.items[1].addr);
+}
+
+test "parse_segments_test1" {
+    const bytes = [_]u8{ 0x06, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd8, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+    var output = try parse_program_header(std.testing.allocator, &bytes, e_ident{
+        .magic = &[_]u8{},
+        .class = 0x2,
+        .endianness = 0x1,
+        .elfver = 0,
+        .osabi = 0,
+        .abiver = 0,
+        .padding = &[_]u8{},
+    }, elf_header{
+        .e_type = 0,
+        .e_machine = 0,
+        .e_version = 0,
+        .e_entry = 0,
+        .e_phoff = 0,
+        .e_shoff = 0,
+        .e_flags = 0,
+        .e_ehsize = 0,
+        .e_phentsize = 56,
+        .e_phnum = 1,
+        .e_shentsize = 0,
+        .e_shnum = 0,
+        .e_shstrndx = 0,
+    });
+
+    defer output.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(output.items.len, 1);
+    try std.testing.expectEqualDeep(output.items[0], elf_segment{ .p_type = 0x6, .p_flags = 0x4, .p_offset = 0x40, .p_vaddr = 0x40, .p_paddr = 0x40, .p_filesz = 0x2d8, .p_memsz = 0x2d8, .p_align = 0x8 });
 }

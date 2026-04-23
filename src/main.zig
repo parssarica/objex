@@ -65,12 +65,13 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
+    defer parsed.section_header.deinit(alloc);
+    defer parsed.program_header.deinit(alloc);
+    defer parsed.symbols.deinit(alloc);
+    defer parsed.strings.deinit(alloc);
+
     output.print_parsed(alloc, &opts, &parsed, output.color_table(opts.colors_on)) catch {
         print("Out of memory\n", .{});
         std.process.exit(1);
     };
-
-    parsed.strings.deinit(alloc);
-    parsed.symbols.deinit(alloc);
-    parsed.section_header.deinit(alloc);
 }
