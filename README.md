@@ -11,11 +11,13 @@ Objex is a lightweight CLI tool for parsing and visualizing ELF binaries written
 
 * [Quick Start](#quick-start-)
 * [Installation](#installation-)
-    + [Installation via cloning](#installation-via-cloning)
+    + [Installation from source](#from-source)
     + [Installation via releases](#installation-via-releases)
 * [Features](#features-)
 * [Usage](#usage-)
-* [Why objex?](#why-objex-)
+    + [Examples](#examples)
+* [Screenshots](#screenshots)
+* [Why objex?](#why-objex)
 * [License](#license)
 
 ## Quick Start ⚡
