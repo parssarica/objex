@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-BSD-green)
 ![Status](https://img.shields.io/badge/status-active-success)
 
-Objex is an lightweight CLI tool for parsing and visualizing ELF binaries written in Zig.
+Objex is a lightweight CLI tool for parsing and visualizing ELF binaries written in Zig.
 
 ## Table of Contents
 
