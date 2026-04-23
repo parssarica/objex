@@ -46,7 +46,7 @@ pub fn help() void {
         \\Options:
         \\        --help            show this help message and exit
         \\        --no-color        disables colors
-        \\    -a, --all             show all informations about file
+        \\    -a, --all             show all information about file
         \\    -S, --sections        show sections
         \\    -s, --symbols         show symbols
         \\    -h, --headers         show headers
@@ -57,7 +57,7 @@ pub fn help() void {
         \\
         \\    objex -a /bin/ls
         \\
-        \\    Shows all informations about /bin/ls
+        \\    Shows all information about /bin/ls
         \\
     ;
 
@@ -332,7 +332,7 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
     }
 
     if (opts.show_strings) {
-        if (opts.show_headers or opts.show_sections or opts.show_strings or opts.show_symbols) {
+        if (opts.show_headers or opts.show_sections or opts.show_symbols) {
             print("\n", .{});
         }
 
