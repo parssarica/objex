@@ -206,9 +206,13 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         print("\t\x1b[{d}mSection header string table index:\x1b[0m \t\x1b[{d}m{d}\x1b[0m\n", .{ color_opts.dimwhite, color_opts.yellow, parsed.header.e_shstrndx });
     }
 
-    if (opts.show_sections) {
+    if (opts.show_sections) blkout: {
         if (opts.show_headers) {
             print("\n", .{});
+        }
+        if (parsed.section_header.items.len == 0) {
+            print("No sections are present.\n", .{});
+            break :blkout;
         }
         print("Idx Sym Name                    Type           Addr       Offset   Size     Flags   \n", .{});
         print("----------------------------------------------------------------------------------------\n", .{});
@@ -269,10 +273,16 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         print("  \x1b[{d}mOS / CPU\x1b[0m      : \x1b[{d}m\x1b[{d}mO\x1b[0m \x1b[{d}m(OS-specific)\x1b[0m \x1b[{d}mx\x1b[0m \x1b[{d}m(OS mask)\x1b[0m    \x1b[{d}mP\x1b[0m \x1b[{d}m(proc mask)\x1b[0m\n", .{ color_opts.dimwhite, color_opts.dimwhite, color_opts.yellow, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite, color_opts.dimwhite });
     }
 
-    if (opts.show_symbols) {
+    if (opts.show_symbols) blkout: {
         if (opts.show_headers or opts.show_sections) {
             print("\n", .{});
         }
+
+        if (parsed.symbols.items.len == 0) {
+            print("No symbols are present.\n", .{});
+            break :blkout;
+        }
+
         print("Idx Sym Value               Size  Type    Bind    Vis     Section         Name\n", .{});
         print("--------------------------------------------------------------------------------\n", .{});
         for (parsed.symbols.items, 0..) |sym, i| {
@@ -331,9 +341,14 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         }
     }
 
-    if (opts.show_strings) {
+    if (opts.show_strings) blkout: {
         if (opts.show_headers or opts.show_sections or opts.show_symbols) {
             print("\n", .{});
+        }
+
+        if (parsed.strings.items.len == 0) {
+            print("No strings are present.", .{});
+            break :blkout;
         }
 
         for (parsed.strings.items) |str| {
@@ -341,9 +356,14 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         }
     }
 
-    if (opts.show_segments) {
+    if (opts.show_segments) blkout: {
         if (opts.show_headers or opts.show_sections or opts.show_strings or opts.show_symbols or opts.show_strings) {
             print("\n", .{});
+        }
+
+        if (parsed.program_header.items.len == 0) {
+            print("No segments are present.", .{});
+            break :blkout;
         }
 
         print("Idx Tag Type               Offset      Virtual address   Physical address   File size   Memory size  Flags  Align\n", .{});
