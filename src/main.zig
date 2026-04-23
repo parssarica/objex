@@ -59,6 +59,7 @@ pub fn main() !void {
             error.NoStrtabSection => parser.invalid_file("File doesn't have a .strtab section, but it has a .symtab section."),
             error.NoEndSymbol => parser.invalid_file("Symbol name doesn't have an end."),
             error.NoDynstrSection => parser.invalid_file("File doesn't have a .dynstr section, but it has a .dynsym section."),
+            error.StringSectionNoData => parser.invalid_file(".strtab or .dynstr section has no data."),
             error.OutOfMemory => print("Out of memory\n", .{}),
         }
         std.process.exit(1);
@@ -69,6 +70,7 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
+    parsed.strings.deinit(alloc);
     parsed.symbols.deinit(alloc);
     parsed.section_header.deinit(alloc);
 }

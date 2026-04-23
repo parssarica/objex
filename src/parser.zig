@@ -59,6 +59,7 @@ pub const elf_file = struct {
     header: elf_header,
     section_header: ArrayList(elf_section),
     symbols: ArrayList(elf_sym),
+    strings: ArrayList([]const u8),
 };
 
 fn little8(bytes: []const u8) u8 {
@@ -365,13 +366,30 @@ pub fn parse_symbols(allocator: std.mem.Allocator, file: []const u8, sections: [
     return list;
 }
 
+pub fn parse_strings(allocator: std.mem.Allocator, sections: []const elf_section) !ArrayList([]const u8) {
+    var list: ArrayList([]const u8) = .empty;
+
+    for (sections) |sect| {
+        if (std.mem.eql(u8, sect.name orelse continue, ".strtab") or std.mem.eql(u8, sect.name orelse continue, ".dynstr")) {
+            const dat = sect.data orelse return error.StringSectionNoData;
+            var iter = std.mem.tokenizeScalar(u8, dat, '\x00');
+            while (iter.next()) |part| {
+                try list.append(allocator, part);
+            }
+        }
+    }
+
+    return list;
+}
+
 pub fn parse_file(allocator: std.mem.Allocator, file: []const u8) !elf_file {
     const e_ident_part = try parse_e_ident(file);
     const header = try parse_header(file, e_ident_part.class, e_ident_part.endianness);
     const section_header = try parse_section_header(allocator, file, e_ident_part, header);
     const symbols = try parse_symbols(allocator, file, section_header.items, e_ident_part);
+    const strings = try parse_strings(allocator, section_header.items);
 
-    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .symbols = symbols };
+    return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .symbols = symbols, .strings = strings };
 }
 
 test "parse_e_ident_test1" {
@@ -578,4 +596,32 @@ test "parse_symbols_test2" {
         output.items[0],
         elf_sym{ .name = bytes[4..5], .st_name = 0x04, .st_info = 0x0, .st_other = 0x00, .st_shndx = 0x00, .st_value = 0x12, .st_size = 0x00 },
     );
+}
+
+test "parse_strings" {
+    const bytes = [_]u8{ 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x63, 0x61, 0x74, 0x73 };
+    var sections: ArrayList(elf_section) = .empty;
+    defer sections.deinit(std.testing.allocator);
+
+    try sections.append(std.testing.allocator, elf_section{
+        .name = ".strtab",
+        .data = &bytes,
+        .sh_name = 0,
+        .sh_type = 0,
+        .sh_flags = 0,
+        .sh_addr = 0,
+        .sh_offset = 0,
+        .sh_size = 0,
+        .sh_link = 0,
+        .sh_info = 0,
+        .sh_addralign = 0,
+        .sh_entsize = 0,
+    });
+
+    var strings = try parse_strings(std.testing.allocator, sections.items);
+    defer strings.deinit(std.testing.allocator);
+
+    try std.testing.expectEqual(strings.items.len, 2);
+    try std.testing.expectEqualStrings("hello", strings.items[0]);
+    try std.testing.expectEqualStrings("cats", strings.items[1]);
 }
