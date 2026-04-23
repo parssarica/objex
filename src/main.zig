@@ -27,7 +27,7 @@ pub fn main() !void {
         std.process.exit(0);
     }
 
-    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols and !opts.show_strings) {
+    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols and !opts.show_strings and !opts.show_segments) {
         output.help();
         std.process.exit(1);
     }

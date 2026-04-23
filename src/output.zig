@@ -5,6 +5,15 @@ const parser = @import("parser.zig");
 const print = utils.print;
 const ArrayList = std.ArrayList;
 
+const segment_tag = enum {
+    executable,
+    data,
+    databss,
+    dynamic,
+    interpreted,
+    readonly,
+};
+
 const colors = struct {
     red: u8 = 31,
     green: u8 = 32,
@@ -35,13 +44,14 @@ pub fn help() void {
         \\Usage: objex <options> <file>
         \\
         \\Options:
-        \\        --help     show this help message and exit
-        \\        --no-color disables colors
-        \\    -a, --all      show all informations about file
-        \\    -S, --sections show sections
-        \\    -s, --symbols  show symbols
-        \\    -h, --headers  show headers
-        \\        --strings  show strings
+        \\        --help            show this help message and exit
+        \\        --no-color        disables colors
+        \\    -a, --all             show all informations about file
+        \\    -S, --sections        show sections
+        \\    -s, --symbols         show symbols
+        \\    -h, --headers         show headers
+        \\    -l, --program-headers show program headers (segments)
+        \\        --strings         show strings
         \\
         \\Example usage:
         \\
@@ -55,7 +65,7 @@ pub fn help() void {
 }
 
 pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file, color_opts: colors) !void {
-    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols and !opts.show_strings) {
+    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols and !opts.show_strings and !opts.show_segments) {
         print("\x1b[31mERROR:\x1b[0m No options provided.\n", .{});
         std.process.exit(1);
     }
@@ -260,7 +270,7 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
     }
 
     if (opts.show_symbols) {
-        if (opts.show_sections) {
+        if (opts.show_headers or opts.show_sections) {
             print("\n", .{});
         }
         print("Idx Sym Value               Size  Type    Bind    Vis     Section         Name\n", .{});
@@ -322,7 +332,7 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
     }
 
     if (opts.show_strings) {
-        if (opts.show_symbols) {
+        if (opts.show_headers or opts.show_sections or opts.show_strings or opts.show_symbols) {
             print("\n", .{});
         }
 
@@ -330,12 +340,99 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
             print("\x1b[{d}m0x{X:0>8}\x1b[0m  \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.blue, str.addr, color_opts.green, str.s });
         }
     }
+
+    if (opts.show_segments) {
+        if (opts.show_headers or opts.show_sections or opts.show_strings or opts.show_symbols or opts.show_strings) {
+            print("\n", .{});
+        }
+
+        print("Idx Tag Type               Offset      Virtual address   Physical address   File size   Memory size  Flags  Align\n", .{});
+        print("-------------------------------------------------------------------------------------------------------------------\n", .{});
+        for (parsed.program_header.items, 0..) |sgmnt, i| {
+            const tag: ?segment_tag = if (sgmnt.p_flags & 0x1 != 0) .executable else if (sgmnt.p_type == 1 and sgmnt.p_flags & 0x4 != 0 and sgmnt.p_flags & 0x2 != 0 and sgmnt.p_flags & 0x1 == 0 and sgmnt.p_memsz > sgmnt.p_filesz) .databss else if (sgmnt.p_type == 1 and sgmnt.p_flags & 0x4 != 0 and sgmnt.p_flags & 0x2 != 0 and sgmnt.p_flags & 0x1 == 0) .data else if (sgmnt.p_type == 2) .dynamic else if (sgmnt.p_type == 3) .interpreted else if (sgmnt.p_flags & 0x4 != 0 and sgmnt.p_flags & 0x2 == 0 and sgmnt.p_flags & 0x1 == 0) .readonly else null;
+            var flags = try decode_flags_segments(allocator, sgmnt.p_flags, color_opts);
+            defer flags.deinit(allocator);
+            print("\x1b[{d}m{d:<3}\x1b[0m\x1b[{d}m{s:^5}\x1b[0m \x1b[{d}m{s:<18}\x1b[0m\x1b[{d}m0x{X:0>7}   0x{X:0>12}    0x{X:0>15}  {d:<12}{d:<13}\x1b[0m{s}\t   \x1b[{d}m0x{X:<5}\x1b[0m\n", .{ color_opts.dimwhite, i, if (tag) |t| switch (t) {
+                .executable => color_opts.red,
+                .data => color_opts.yellow,
+                .databss => color_opts.brightblack,
+                .dynamic => color_opts.purple,
+                .interpreted => color_opts.cyan,
+                .readonly => color_opts.green,
+            } else 0, if (tag) |t| switch (t) {
+                .executable => "[X]",
+                .data => "[D]",
+                .databss => "[D B]",
+                .dynamic => "[Y]",
+                .interpreted => "[L]",
+                .readonly => "[R]",
+            } else "", if (sgmnt.p_type == 1) color_opts.bold else color_opts.dimwhite, resolve_segment_type(sgmnt.p_type), color_opts.blue, sgmnt.p_offset, sgmnt.p_vaddr, sgmnt.p_paddr, sgmnt.p_filesz, sgmnt.p_memsz, flags.items, color_opts.blue, sgmnt.p_align });
+        }
+
+        print("\n\x1b[{d}mSections mapping to segments:\x1b[0m\n", .{color_opts.cyan});
+        var printed_sects: u16 = 0;
+        for (parsed.program_header.items, 0..) |sgmnt, i| {
+            print("\x1b[{d}m[\x1b[0m\x1b[{d}m{d}\x1b[0m\x1b[{d}m]\x1b[0m \x1b[{d}m{s}\x1b[0m: ", .{ color_opts.dimwhite, color_opts.blue, i, color_opts.dimwhite, if (sgmnt.p_type == 1) color_opts.bold else color_opts.dimwhite, resolve_segment_type(sgmnt.p_type) });
+            printed_sects = 0;
+            for (parsed.section_header.items) |sect| {
+                if (sect.sh_offset >= sgmnt.p_offset and sect.sh_offset + sect.sh_size <= sgmnt.p_offset + sgmnt.p_filesz) {
+                    if (printed_sects != 0) {
+                        print(", ", .{});
+                    }
+                    printed_sects += 1;
+                    print("{s}", .{sect.name orelse "<null>"});
+                }
+            }
+
+            if (printed_sects == 0) {
+                print("No sections are mapped to this segment", .{});
+            }
+
+            print("\n", .{});
+        }
+
+        print("\n\x1b[{d}mFlags:\x1b[0m\n", .{color_opts.cyan});
+        print("  \x1b[{d}mR\x1b[0m: Readable\n", .{color_opts.green});
+        print("  \x1b[{d}mE\x1b[0m: Executable\n", .{color_opts.red});
+        print("  \x1b[{d}mW\x1b[0m: Writable\n", .{color_opts.yellow});
+        print("\n\x1b[{d}mTags:\x1b[0m\n", .{color_opts.cyan});
+        print("  \x1b[{d}m[E]\x1b[0m: Executable\n", .{color_opts.red});
+        print("  \x1b[{d}m[D]\x1b[0m: Data\n", .{color_opts.yellow});
+        print("  \x1b[{d}m[D B]\x1b[0m: Data (.bss)\n", .{color_opts.brightblack});
+        print("  \x1b[{d}m[Y]\x1b[0m: Dynamic\n", .{color_opts.purple});
+        print("  \x1b[{d}m[L]\x1b[0m: Interpreted\n", .{color_opts.cyan});
+        print("  \x1b[{d}m[R]\x1b[0m: Read-only\n", .{color_opts.green});
+    }
 }
 
 pub fn color_table(colors_on: bool) colors {
     const c = if (colors_on) colors{} else colors{ .red = 0, .green = 0, .yellow = 0, .brightyellow = 0, .blue = 0, .brightblue = 0, .purple = 0, .brightpurple = 0, .cyan = 0, .brightcyan = 0, .white = 0, .brightblack = 0, .highlightedred = 0, .highlightedgreen = 0, .highlightedyellow = 0, .highlightedblue = 0, .highlightedpurple = 0, .highlightedcyan = 0, .highlightedwhite = 0, .bold = 0, .dimwhite = 0, .italic = 0 };
 
     return c;
+}
+
+fn decode_flags_segments(allocator: std.mem.Allocator, flags: u64, color_opts: colors) !ArrayList(u8) {
+    var flag: ArrayList(u8) = .empty;
+    var i: u8 = 0;
+
+    if (flags & 0x4 != 0) {
+        try flag.writer(allocator).print("\x1b[{}mR", .{color_opts.green});
+        i += 1;
+    }
+
+    if (flags & 0x2 != 0) {
+        try flag.writer(allocator).print("\x1b[{}mW", .{color_opts.yellow});
+        i += 1;
+    }
+
+    if (flags & 0x1 != 0) {
+        try flag.writer(allocator).print("\x1b[{}mE", .{color_opts.red});
+        i += 1;
+    }
+
+    try flag.appendSlice(allocator, "\x1b[0m");
+
+    return flag;
 }
 
 fn resolve_flags(allocator: std.mem.Allocator, flags: u64, machine: u16, color_opts: colors) !ArrayList(u8) {
@@ -535,4 +632,19 @@ fn decode_flags(allocator: std.mem.Allocator, flags: u64) !ArrayList(u8) {
     }
 
     return flag;
+}
+
+fn resolve_segment_type(p_type: u32) []const u8 {
+    return switch (p_type) {
+        0 => "NULL",
+        1 => "LOAD",
+        2 => "DYNAMIC",
+        3 => "INTERP",
+        4 => "NOTE",
+        5 => "SHLIB",
+        6 => "PHDR",
+        7 => "TLS",
+        0x70000000...0x7fffffff => "Proc specific",
+        else => if (p_type == 0x6474e550) "GNU_EH_FRAME" else if (p_type == 0x6474e551) "GNU_STACK" else if (p_type == 0x6474e552) "GNU_RELRO" else if (p_type == 0x6474e553) "GNU_PROPERTY" else if (p_type >= 0x60000000 or p_type <= 0x6fffffff) "OS specific" else "Unknown",
+    };
 }
