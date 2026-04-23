@@ -54,12 +54,17 @@ pub const elf_sym = struct {
     st_size: u64,
 };
 
+pub const elf_str = struct {
+    addr: u64,
+    s: []const u8,
+};
+
 pub const elf_file = struct {
     e_ident_part: e_ident,
     header: elf_header,
     section_header: ArrayList(elf_section),
     symbols: ArrayList(elf_sym),
-    strings: ArrayList([]const u8),
+    strings: ArrayList(elf_str),
 };
 
 fn little8(bytes: []const u8) u8 {
@@ -366,15 +371,18 @@ pub fn parse_symbols(allocator: std.mem.Allocator, file: []const u8, sections: [
     return list;
 }
 
-pub fn parse_strings(allocator: std.mem.Allocator, sections: []const elf_section) !ArrayList([]const u8) {
-    var list: ArrayList([]const u8) = .empty;
+pub fn parse_strings(allocator: std.mem.Allocator, sections: []const elf_section) !ArrayList(elf_str) {
+    var list: ArrayList(elf_str) = .empty;
+    var addr: u64 = undefined;
 
     for (sections) |sect| {
         if (std.mem.eql(u8, sect.name orelse continue, ".strtab") or std.mem.eql(u8, sect.name orelse continue, ".dynstr")) {
+            addr = sect.sh_offset;
             const dat = sect.data orelse return error.StringSectionNoData;
             var iter = std.mem.tokenizeScalar(u8, dat, '\x00');
             while (iter.next()) |part| {
-                try list.append(allocator, part);
+                try list.append(allocator, elf_str{ .addr = addr, .s = part });
+                addr += part.len + 1;
             }
         }
     }
@@ -598,7 +606,7 @@ test "parse_symbols_test2" {
     );
 }
 
-test "parse_strings" {
+test "parse_strings_test1" {
     const bytes = [_]u8{ 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x00, 0x63, 0x61, 0x74, 0x73 };
     var sections: ArrayList(elf_section) = .empty;
     defer sections.deinit(std.testing.allocator);
@@ -622,6 +630,8 @@ test "parse_strings" {
     defer strings.deinit(std.testing.allocator);
 
     try std.testing.expectEqual(strings.items.len, 2);
-    try std.testing.expectEqualStrings("hello", strings.items[0]);
-    try std.testing.expectEqualStrings("cats", strings.items[1]);
+    try std.testing.expectEqualStrings("hello", strings.items[0].s);
+    try std.testing.expectEqual(0, strings.items[0].addr);
+    try std.testing.expectEqualStrings("cats", strings.items[1].s);
+    try std.testing.expectEqual(6, strings.items[1].addr);
 }

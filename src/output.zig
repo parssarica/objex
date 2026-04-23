@@ -41,6 +41,7 @@ pub fn help() void {
         \\    -S, --sections show sections
         \\    -s, --symbols  show symbols
         \\    -h, --headers  show headers
+        \\        --strings  show strings
         \\
         \\Example usage:
         \\
@@ -54,7 +55,7 @@ pub fn help() void {
 }
 
 pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, parsed: *const parser.elf_file, color_opts: colors) !void {
-    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols) {
+    if (!opts.show_sections and !opts.show_headers and !opts.show_symbols and !opts.show_strings) {
         print("\x1b[31mERROR:\x1b[0m No options provided.\n", .{});
         std.process.exit(1);
     }
@@ -317,6 +318,16 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
                     break :blk (parsed.section_header.items[sym.st_shndx].name orelse "");
                 }
             }, if (cond) color_opts.bold else 0, if (cond) color_opts.green else color_opts.white, sym.name orelse "" });
+        }
+    }
+
+    if (opts.show_strings) {
+        if (opts.show_symbols) {
+            print("\n", .{});
+        }
+
+        for (parsed.strings.items) |str| {
+            print("\x1b[{d}m0x{X:0>8}\x1b[0m  \x1b[{d}m{s}\x1b[0m\n", .{ color_opts.blue, str.addr, color_opts.green, str.s });
         }
     }
 }
