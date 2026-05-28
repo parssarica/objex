@@ -16,7 +16,7 @@ pub const options = struct {
     show_segments: bool,
 };
 
-pub fn parse_args(args: *std.process.ArgIterator) !options {
+pub fn parse_args(args: *std.process.Args.Iterator) !options {
     const opt_list = [_][]const u8{ "--help", "-S", "--sections", "-h", "--headers", "-s", "--symbols", "-a", "--all", "--strings", "-l", "--program-headers", "--no-color" };
     var opts = options{ .file = null, .colors_on = true, .show_help = false, .show_sections = false, .show_symbols = false, .show_headers = false, .show_segments = false, .show_strings = false };
     var last_val: []const u8 = undefined;

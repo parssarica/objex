@@ -7,6 +7,7 @@ const cli = @import("cli.zig");
 const parser = @import("parser.zig");
 const print = utils.print;
 const ArrayList = std.ArrayList;
+const io = @import("main.zig").io;
 
 const segment_tag = enum {
     executable,
@@ -435,27 +436,28 @@ pub fn color_table(colors_on: bool) colors {
 }
 
 fn decode_flags_segments(allocator: std.mem.Allocator, flags: u64, color_opts: colors) !ArrayList(u8) {
-    var flag: ArrayList(u8) = .empty;
     var i: u8 = 0;
+    var w: std.Io.Writer.Allocating = .init(allocator);
+    defer w.deinit();
 
     if (flags & 0x4 != 0) {
-        try flag.writer(allocator).print("\x1b[{}mR", .{color_opts.green});
+        try w.writer.print("\x1b[{}mR", .{color_opts.green});
         i += 1;
     }
 
     if (flags & 0x2 != 0) {
-        try flag.writer(allocator).print("\x1b[{}mW", .{color_opts.yellow});
+        try w.writer.print("\x1b[{}mW", .{color_opts.yellow});
         i += 1;
     }
 
     if (flags & 0x1 != 0) {
-        try flag.writer(allocator).print("\x1b[{}mE", .{color_opts.red});
+        try w.writer.print("\x1b[{}mE", .{color_opts.red});
         i += 1;
     }
 
-    try flag.appendSlice(allocator, "\x1b[0m");
+    try w.writer.print("\x1b[0m", .{});
 
-    return flag;
+    return w.toArrayList();
 }
 
 fn resolve_flags(allocator: std.mem.Allocator, flags: u64, machine: u16, color_opts: colors) !ArrayList(u8) {

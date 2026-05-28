@@ -7,15 +7,17 @@ const parser = @import("parser.zig");
 const cli = @import("cli.zig");
 const output = @import("output.zig");
 const print = utils.print;
+pub var io: ?std.Io = null;
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
     const alloc = arena.allocator();
 
-    var args = std.process.args();
+    var args = try init.minimal.args.iterateAllocator(alloc);
     _ = args.next();
+    io = init.io;
     const opts = cli.parse_args(&args) catch |err| {
         print("\x1b[31mERROR:\x1b[0m {s}\n", .{switch (err) {
             error.OptionUsedAsFile => "Option used as file.",
@@ -40,14 +42,7 @@ pub fn main() !void {
         std.process.exit(1);
     };
 
-    const f = utils.readfile(alloc, path) catch |err| {
-        if (err == error.IsDir) {
-            print("\x1b[31mERROR:\x1b[0m Path is a directory rather than a file.\n", .{});
-            std.process.exit(1);
-        }
-
-        return err;
-    };
+    const f = utils.readfile(alloc, path);
     defer alloc.free(f);
 
     var parsed = parser.parse_file(alloc, f) catch |err| {
