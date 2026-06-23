@@ -463,6 +463,19 @@ pub fn parse_file(allocator: std.mem.Allocator, file: []const u8) !elf_file {
     return elf_file{ .e_ident_part = e_ident_part, .header = header, .section_header = section_header, .program_header = program_header, .symbols = symbols, .strings = strings };
 }
 
+fn fuzzTestOne(context: void, smith: *std.testing.Smith) anyerror!void {
+    _ = context;
+    const input = smith.in orelse return;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var input_modified = allocator.alloc(u8, input.len + 4) catch return;
+    @memcpy(input_modified[0..4], "\x7fELF");
+    @memcpy(input_modified[4..], input);
+
+    _ = parse_file(allocator, input_modified) catch {};
+}
+
 test "parse_e_ident_test1" {
     const bytes = [_]u8{ 0x7f, 0x45, 0x4c, 0x46, 0x2, 0x1, 0x1, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
     const output = parse_e_ident(&bytes) catch unreachable;
@@ -729,4 +742,15 @@ test "parse_segments_test1" {
 
     try std.testing.expectEqual(output.items.len, 1);
     try std.testing.expectEqualDeep(output.items[0], elf_segment{ .p_type = 0x6, .p_flags = 0x4, .p_offset = 0x40, .p_vaddr = 0x40, .p_paddr = 0x40, .p_filesz = 0x2d8, .p_memsz = 0x2d8, .p_align = 0x8 });
+}
+
+test "fuzz" {
+    try std.testing.fuzz({}, fuzzTestOne, .{
+        .corpus = &.{
+            @embedFile("testdata/corpus/ls"),
+            @embedFile("testdata/corpus/mv"),
+            @embedFile("testdata/corpus/rm"),
+            @embedFile("testdata/corpus/wc"),
+        },
+    });
 }
