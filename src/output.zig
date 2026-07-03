@@ -366,7 +366,7 @@ pub fn print_parsed(allocator: std.mem.Allocator, opts: *const cli.options, pars
         }
 
         if (parsed.program_header.items.len == 0) {
-            print("No segments are present.", .{});
+            print("No segments are present.\n", .{});
             break :blkout;
         }
 
